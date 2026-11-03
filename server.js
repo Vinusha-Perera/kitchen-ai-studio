@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 import { publicOptions } from './lib/options.js';
 import { normaliseAnswers, specLines } from './lib/answers.js';
-import { buildPrompt } from './lib/prompt.js';
+import { buildPrompt, buildNovaPrompt } from './lib/prompt.js';
 import { estimatePrice } from './lib/pricing.js';
 import { getProvider } from './lib/providers/index.js';
 import { designPackHtml } from './lib/designPack.js';
@@ -86,14 +86,17 @@ app.post('/api/generate', rateLimit, upload.single('photo'), async (req, res) =>
     }
   }
 
-  const prompt = buildPrompt(answers, Boolean(photoPng));
-  const price = estimatePrice(answers);
   const provider = getProvider();
+  // Bedrock (Nova Canvas) uses its own compact prompt; others use the full prompt.
+  const prompt = provider.name === 'bedrock'
+    ? buildNovaPrompt(answers, Boolean(photoPng)).text
+    : buildPrompt(answers, Boolean(photoPng));
+  const price = estimatePrice(answers);
 
   let fallback = false;
   let errorNote = null;
   try {
-    const png = await provider.renderKitchen({ prompt, photo: photoPng });
+    const png = await provider.renderKitchen({ prompt, photo: photoPng, answers });
     await fs.writeFile(path.join(GEN, `${id}.png`), png);
   } catch (e) {
     // Never leave the customer with nothing: fall back to a style example (like the existing pack does).
