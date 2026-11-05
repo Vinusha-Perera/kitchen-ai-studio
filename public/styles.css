@@ -132,20 +132,29 @@ input:focus { outline: 2px solid #d9cbc1; border-color: var(--accent); }
 .loading h2 { margin: 0 0 6px; }
 .loading p { color: var(--ink-soft); font-size: .85rem; }
 
-/* Result */
-.compare { position: relative; border-radius: 12px; overflow: hidden; aspect-ratio: 3 / 2; background: #eee; user-select: none; touch-action: none; }
-.compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.compare .before { clip-path: inset(0 50% 0 0); }
-.compare .handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; transform: translateX(-1px); pointer-events: none; }
-.compare .handle::after { content: '⇆'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: .9rem; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
-.compare .tag { position: absolute; top: 12px; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; background: rgba(31,27,28,.7); color: #fff; padding: 5px 9px; border-radius: 4px; }
-.compare .tag.l { left: 12px; } .compare .tag.r { right: 12px; }
-.single img { width: 100%; border-radius: 12px; display: block; }
+/* Result: before photo, then after design */
+.shot { position: relative; margin: 0 0 14px; }
+.shot img { width: 100%; height: auto; display: block; border-radius: 12px; }
+.shot .tag { position: absolute; top: 12px; left: 12px; font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; background: rgba(31,27,28,.7); color: #fff; padding: 5px 9px; border-radius: 4px; }
 .flag { background: #fbf3e6; color: #7a5a2b; font-size: .76rem; padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; }
 .result-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
 .panel { border: 1px solid var(--line); border-radius: 10px; padding: 16px; background: var(--white); font-size: .82rem; }
 .panel h4 { margin: 0 0 8px; font-size: .85rem; }
 .price { font-family: var(--serif); font-size: 1.4rem; font-weight: 600; }
+.price-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.badge { font-size: .62rem; letter-spacing: .08em; text-transform: uppercase; background: #f3eee7; color: #7a6650; padding: 4px 8px; border-radius: 3px; }
+.price-sub { font-size: .72rem; color: var(--ink-soft); }
+.plines { margin: 12px 0 6px; }
+.pl { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: .85rem; }
+.pl span:first-child { color: var(--ink-soft); }
+.pl.tot { font-weight: 600; border-bottom: 0; }
+.pl.tot span:first-child { color: inherit; }
+.install { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.install .pl { border-bottom: 0; }
+.small.muted { color: var(--ink-soft); opacity: .85; margin-top: 6px; }
+.breakdown { margin: 12px 0 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+.breakdown div { display: flex; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.breakdown span { color: var(--ink-soft); }
 .small { font-size: .72rem; color: var(--ink-soft); margin-top: 4px; }
 .spec div { padding: 3px 0; border-bottom: 1px dashed var(--line); display: flex; justify-content: space-between; gap: 10px; }
 .spec div span:last-child { text-align: right; color: var(--ink-soft); }
