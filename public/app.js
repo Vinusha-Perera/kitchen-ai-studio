@@ -229,11 +229,16 @@ const LOADING_LINES = [
   'Adjusting the lighting…', 'Adding the finishing touches…',
 ];
 
+let generating = false;
+
 async function generate() {
+  if (generating) return; // ignore double-clicks: one design per click
+  generating = true;
+  els.next.disabled = true;
   els.foot.classList.add('gone');
   els.count.textContent = 'Creating your design';
   let i = 0;
-  els.body.innerHTML = `<div class="loading"><div class="spinner"></div><h2>Designing your kitchen</h2><p id="loadLine">${LOADING_LINES[0]}</p><p class="small">This usually takes 20–60 seconds.</p></div>`;
+  els.body.innerHTML = `<div class="loading"><div class="spinner"></div><h2>Designing your kitchen</h2><p id="loadLine">${LOADING_LINES[0]}</p><p class="small">This usually takes 30–90 seconds.</p></div>`;
   const ticker = setInterval(() => { const l = $('#loadLine'); if (l) l.textContent = LOADING_LINES[++i % LOADING_LINES.length]; }, 4000);
 
   const fd = new FormData();
@@ -251,20 +256,30 @@ async function generate() {
     $('#retry').addEventListener('click', () => { state.step = TOTAL - 1; render(); });
   } finally {
     clearInterval(ticker);
+    generating = false;
   }
+}
+
+// Price panel in the Design Pack format: range, supply lines, VAT, total, then installation separately.
+function priceHtml(p) {
+  const row = (l, cls = '') => `<div class="pl ${cls}"><span>${esc(l.label)}</span><span>${esc(l.value)}</span></div>`;
+  const lines = p.lines || p.breakdown || [];
+  return `
+    <div class="price-top"><div class="price">${esc(p.label)}</div><span class="price-sub">${esc(p.sub || 'Indicative estimate')}</span></div>
+    ${lines.length ? `<div class="plines">${lines.map((l) => row(l)).join('')}${p.total ? row(p.total, 'tot') : ''}</div>` : ''}
+    ${p.installation ? `<div class="install">${row(p.installation)}<div class="small">${esc(p.installation.note)}</div></div>` : ''}
+    ${(p.notes || [p.note || 'Estimate based on your style and budget. Actual costs vary.']).map((n) => `<div class="small muted">${esc(n)}</div>`).join('')}`;
 }
 
 function showResult(d) {
   els.count.textContent = 'Your design';
   els.progress.innerHTML = Array.from({ length: TOTAL }, () => '<span class="done"></span>').join('');
 
+  // Before photo first, then the new design underneath. Each image keeps its own shape (no cropping).
   const visual = d.beforeUrl && !d.fallback
-    ? `<div class="compare" id="compare">
-        <img src="${d.imageUrl}" alt="Your new kitchen design"/>
-        <img class="before" src="${d.beforeUrl}" alt="Your kitchen today"/>
-        <div class="handle"></div><span class="tag l">Before</span><span class="tag r">After</span>
-      </div><p class="small">Drag across the image to compare before and after.</p>`
-    : `<div class="single"><img src="${d.imageUrl}" alt="Kitchen design"/></div>`;
+    ? `<figure class="shot"><span class="tag">Before</span><img src="${d.beforeUrl}" alt="Your kitchen today"/></figure>
+       <figure class="shot"><span class="tag">After</span><img src="${d.imageUrl}" alt="Your new kitchen design"/></figure>`
+    : `<figure class="shot"><img src="${d.imageUrl}" alt="Kitchen design"/></figure>`;
 
   const flag = d.fallback
     ? `<div class="flag">Example image — our AI render was unavailable just now. Your designer will prepare one for you.</div>`
@@ -275,9 +290,8 @@ function showResult(d) {
     <p class="lede">Here's your space reimagined with the choices you made.</p>
     ${flag}${visual}
     <div class="result-cols">
-      <div class="panel"><div class="price">${esc(d.price.label)}</div>
-        <div class="small">Indicative range based on your budget</div>
-        <div class="small">Your detailed estimate will be confirmed with your quote.</div></div>
+      <div class="panel">
+        ${priceHtml(d.price)}</div>
       <div class="panel"><h4>Specification</h4><div class="spec">${d.spec.map(([k, v]) => `<div><span>${esc(k)}</span><span>${esc(v)}</span></div>`).join('')}</div></div>
     </div>
     <div class="actions">
@@ -286,17 +300,6 @@ function showResult(d) {
       <button class="btn-ghost" id="again" type="button">Try another style</button>
     </div>`;
 
-  const cmp = $('#compare');
-  if (cmp) {
-    const before = $('.before', cmp), handle = $('.handle', cmp);
-    const move = (x) => {
-      const r = cmp.getBoundingClientRect();
-      const p = Math.max(0, Math.min(100, ((x - r.left) / r.width) * 100));
-      before.style.clipPath = `inset(0 ${100 - p}% 0 0)`; handle.style.left = p + '%';
-    };
-    cmp.addEventListener('pointerdown', (e) => { cmp.setPointerCapture(e.pointerId); move(e.clientX); });
-    cmp.addEventListener('pointermove', (e) => e.buttons && move(e.clientX));
-  }
   // Keep photo, measurements and contact details; go back to the style step.
   $('#again').addEventListener('click', () => { state.step = 1; render(); });
 }

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { publicOptions } from './lib/options.js';
 import { normaliseAnswers, specLines } from './lib/answers.js';
 import { buildPrompt, buildNovaPrompt } from './lib/prompt.js';
-import { estimatePrice } from './lib/pricing.js';
+import { getPrice } from './lib/pricing.js';
 import { getProvider } from './lib/providers/index.js';
 import { designPackHtml } from './lib/designPack.js';
 
@@ -87,11 +87,13 @@ app.post('/api/generate', rateLimit, upload.single('photo'), async (req, res) =>
   }
 
   const provider = getProvider();
-  // Bedrock (Nova Canvas) uses its own compact prompt; others use the full prompt.
+  // Bedrock uses the step-by-step kitchen prompt; other providers use the instruction-style prompt.
   const prompt = provider.name === 'bedrock'
     ? buildNovaPrompt(answers, Boolean(photoPng)).text
     : buildPrompt(answers, Boolean(photoPng));
-  const price = estimatePrice(answers);
+
+  // Price (AI or formula) runs at the same time as the render, so it adds no waiting time.
+  const pricePromise = getPrice(answers);
 
   let fallback = false;
   let errorNote = null;
@@ -110,6 +112,8 @@ app.post('/api/generate', rateLimit, upload.single('photo'), async (req, res) =>
       await sharp({ create: { width: 1536, height: 1024, channels: 3, background: '#e7e0d6' } }).png().toFile(path.join(GEN, `${id}.png`));
     }
   }
+
+  const price = await pricePromise;
 
   const record = {
     id,
