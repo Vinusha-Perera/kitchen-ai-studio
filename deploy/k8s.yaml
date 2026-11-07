@@ -1,0 +1,217 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kitchen-ai
+---
+# ---------------------------------------------------------------------------
+# Bedrock credentials. Either fill these in (do NOT commit the filled file) or
+# create the Secret out-of-band and delete this block:
+#   kubectl -n kitchen-ai create secret generic kitchen-ai-aws \
+#     --from-literal=AWS_ACCESS_KEY_ID=... \
+#     --from-literal=AWS_SECRET_ACCESS_KEY=...
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kitchen-ai-aws
+  namespace: kitchen-ai
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: REPLACE_ME
+  AWS_SECRET_ACCESS_KEY: REPLACE_ME
+  # AWS_SESSION_TOKEN: REPLACE_ME   # only for temporary credentials
+---
+# htpasswd line(s), generated with:
+#   docker run --rm httpd:2.4-alpine htpasswd -nbB admin 'CHOOSE-A-STRONG-PASSWORD'
+# Traefik reads the "users" key.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kitchen-ai-basicauth
+  namespace: kitchen-ai
+type: Opaque
+stringData:
+  users: |
+    admin:$apr1$REPLACE_WITH_REAL_HASH
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kitchen-ai-config
+  namespace: kitchen-ai
+data:
+  PORT: "3000"
+  BRAND_NAME: "AI Design Studio"
+  BRAND_SITE: "siyothsoftware.com"
+  RATE_LIMIT_PER_HOUR: "10"
+
+  IMAGE_PROVIDER: "bedrock"
+  AWS_REGION: "us-east-2"
+  MODEL_ID: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  BEDROCK_MODEL_ID: "us.stability.stable-image-control-structure-v1:0"
+  BEDROCK_TEXT_MODEL_ID: "stability.stable-image-core-v1:1"
+  BEDROCK_INPAINT_MODEL_ID: "us.stability.stable-image-inpaint-v1:0"
+  BEDROCK_PHOTO_MODE: "inpaint"
+  BEDROCK_CONTROL_STRENGTH: "0.7"
+  BEDROCK_GROW_MASK: "12"
+  BEDROCK_MAX_ATTEMPTS: "6"
+  HARMONISE: "structure"
+
+  SEGMENTATION: "on"
+  SEG_CACHE_DIR: "/cache"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kitchen-ai-storage
+  namespace: kitchen-ai
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: standard   # set yours if there is no default class
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kitchen-ai
+  namespace: kitchen-ai
+spec:
+  replicas: 1                     # must stay 1: local disk + in-memory rate limit
+  strategy:
+    type: Recreate                # RWO PVC cannot be shared by two pods
+  selector:
+    matchLabels:
+      app: kitchen-ai
+  template:
+    metadata:
+      labels:
+        app: kitchen-ai
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      imagePullSecrets:
+        - name: gitlab-regcred
+      containers:
+        - name: app
+          image: registry.gitlab.com/siyothsoft1/docker-registry/kitchen-ai-studio:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: kitchen-ai-config
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kitchen-ai-aws
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kitchen-ai-aws
+                  key: AWS_SECRET_ACCESS_KEY
+          volumeMounts:
+            - name: storage
+              mountPath: /app/data
+              subPath: data
+            - name: storage
+              mountPath: /app/generated
+              subPath: generated
+            - name: storage
+              mountPath: /cache
+              subPath: hf-cache
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+          startupProbe:
+            httpGet:
+              path: /api/options
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /api/options
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/options
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: kitchen-ai-storage
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kitchen-ai
+  namespace: kitchen-ai
+spec:
+  selector:
+    app: kitchen-ai
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: traefik.io/v1alpha1    # Traefik v3. For v2 use traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: basicauth
+  namespace: kitchen-ai
+spec:
+  basicAuth:
+    secret: kitchen-ai-basicauth
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kitchen-ai
+  namespace: kitchen-ai
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # format is "<namespace>-<middleware>@kubernetescrd"
+    traefik.ingress.kubernetes.io/router.middlewares: kitchen-ai-basicauth@kubernetescrd
+    traefik.ingress.kubernetes.io/router.tls: "true"
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - kitchen.example.com
+      secretName: kitchen-ai-tls
+  rules:
+    - host: kitchen.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kitchen-ai
+                port:
+                  name: http
